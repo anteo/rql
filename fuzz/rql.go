@@ -3,7 +3,7 @@ package fuzz
 import (
 	"time"
 
-	"github.com/ashtonian/rql"
+	"github.com/anteo/rql"
 )
 
 var QueryParser = rql.MustNewParser(rql.Config{

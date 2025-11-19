@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ashtonian/rql"
+	"github.com/anteo/rql"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 )

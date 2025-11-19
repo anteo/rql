@@ -1,4 +1,4 @@
-module github.com/ashtonian/rql
+module github.com/anteo/rql
 
 require (
 	github.com/go-sql-driver/mysql v1.5.0
