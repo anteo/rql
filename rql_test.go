@@ -1282,8 +1282,52 @@ func compareInterface(a, b interface{}) bool {
 		return fmt.Sprint(a) < fmt.Sprint(b)
 	}
 
-	// Otherwise, use the regular string representation for comparison.
+	// Compare numeric values by converting to float64 for consistent comparison
+	aFloat, aIsNumeric := toFloat64(a)
+	bFloat, bIsNumeric := toFloat64(b)
+
+	if aIsNumeric && bIsNumeric {
+		if aFloat != bFloat {
+			return aFloat < bFloat
+		}
+		// If numeric values are equal, compare by type to ensure stable sorting
+		return fmt.Sprintf("%T", a) < fmt.Sprintf("%T", b)
+	}
+
+	// For non-numeric values, use string comparison
 	return fmt.Sprint(a) < fmt.Sprint(b)
+}
+
+// toFloat64 attempts to convert an interface{} to float64 for consistent numeric comparison
+func toFloat64(v interface{}) (float64, bool) {
+	switch val := v.(type) {
+	case int:
+		return float64(val), true
+	case int8:
+		return float64(val), true
+	case int16:
+		return float64(val), true
+	case int32:
+		return float64(val), true
+	case int64:
+		return float64(val), true
+	case uint:
+		return float64(val), true
+	case uint8:
+		return float64(val), true
+	case uint16:
+		return float64(val), true
+	case uint32:
+		return float64(val), true
+	case uint64:
+		return float64(val), true
+	case float32:
+		return float64(val), true
+	case float64:
+		return val, true
+	default:
+		return 0, false
+	}
 }
 
 func deepSort(i interface{}) interface{} {
