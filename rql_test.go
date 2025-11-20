@@ -1177,6 +1177,7 @@ func equalExp(e1, e2 string, pexp string, pos bool) bool {
 func split(e string, pexp string, pos bool) []string {
 	var s []string
 	for len(e) > 0 {
+		e = strings.TrimPrefix(e, "NOT ")
 		if e[0] == '(' {
 			end := strings.LastIndexByte(e, ')') + 1
 			s = append(s, e[:end])

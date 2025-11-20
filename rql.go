@@ -120,7 +120,7 @@ type Field struct {
 	CovertFn Converter
 }
 type FieldMeta struct {
-	// Name of the column.
+	// Name of the field.
 	Name string
 	// name of the column.
 	Column string
@@ -622,7 +622,7 @@ func (p *parseState) fmtOp(f *FieldMeta, op Op) string {
 	p.argN++
 
 	dbOp, fmtStr := p.Config.GetDBStatement(op, f)
-	return fmt.Sprintf(fmtStr, p.colName(f.Name), dbOp, param)
+	return fmt.Sprintf(fmtStr, p.colName(f.Column), dbOp, param)
 }
 
 // colName formats the query field to database column name in cases the user configured a custom
