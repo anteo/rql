@@ -522,6 +522,12 @@ func (p *Parser) sort(fields []string) string {
 	return strings.Join(sortParams, ", ")
 }
 
+func (p *parseState) not(f map[string]interface{}) {
+	p.WriteString("NOT (")
+	p.and(f)
+	p.WriteByte(')')
+}
+
 func (p *parseState) and(f map[string]interface{}) {
 	var i int
 	for k, v := range f {
@@ -537,6 +543,10 @@ func (p *parseState) and(f map[string]interface{}) {
 			terms, ok := v.([]interface{})
 			expect(ok, "$and must be type array")
 			p.relOp(AND, terms)
+		case k == p.op(NOT):
+			term, ok := v.(map[string]interface{})
+			expect(ok, "$not must be type object")
+			p.not(term)
 		case p.fields[k] != nil:
 			f := p.fields[k]
 			expect(f.Filterable, "field %q is not filterable", k)

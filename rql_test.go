@@ -403,6 +403,29 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			name: "negation",
+			conf: Config{
+				Model: new(struct {
+					Age     int    `rql:"filter"`
+					Name    string `rql:"filter"`
+					Address string `rql:"filter"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"$not": {
+						"age": { "$gt": 10 }
+					}
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "NOT (age > ?)",
+				FilterArgs: []interface{}{10},
+			},
+		},
+		{
 			name: "custom operation prefix",
 			conf: Config{
 				Model: new(struct {

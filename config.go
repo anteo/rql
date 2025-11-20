@@ -23,6 +23,7 @@ const (
 	LIKE = Op("like") // LIKE "PATTERN"
 	OR   = Op("or")   // disjunction
 	AND  = Op("and")  // conjunction
+	NOT  = Op("not")  // negation
 )
 
 // Default values for configuration.
