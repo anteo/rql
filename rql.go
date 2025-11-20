@@ -584,12 +584,15 @@ func (p *parseState) field(f *Field, v interface{}) {
 	terms, ok := v.(map[string]interface{})
 	// default equality check.
 	if !ok {
-		op := EQ
-		err := f.ValidateFn(op, *f.FieldMeta, v)
-		must(err, "invalid datatype for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.FieldMeta, op))
-		arg := f.CovertFn(op, *f.FieldMeta, v)
-		p.values = append(p.values, arg)
+		// Check if value is an array/slice for IN (...) statement
+		// Only generate IN (...) for arrays when there are no explicit operators
+		// and the field type is not a slice itself (to avoid conflicts with custom operators)
+		if arr, isArray := v.([]interface{}); isArray && f.Type.Kind() != reflect.Slice {
+			p.in(f, arr)
+		} else {
+			p.eq(f, v)
+		}
+		return
 	}
 	var i int
 	if len(terms) > 1 {
@@ -608,6 +611,45 @@ func (p *parseState) field(f *Field, v interface{}) {
 		i++
 	}
 	if len(terms) > 1 {
+		p.WriteByte(')')
+	}
+}
+
+func (p *parseState) eq(f *Field, v interface{}) {
+	// Default equality check for single values
+	op := EQ
+	err := f.ValidateFn(op, *f.FieldMeta, v)
+	must(err, "invalid datatype for field %q", f.Name)
+	p.WriteString(p.fmtOp(f.FieldMeta, op))
+	arg := f.CovertFn(op, *f.FieldMeta, v)
+	p.values = append(p.values, arg)
+}
+
+func (p *parseState) in(f *Field, arr []interface{}) {
+	// Handle empty array case - generate "1=0" (always false)
+	if len(arr) == 0 {
+		p.WriteString("1=0")
+	} else {
+		// Generate IN (...) statement for arrays
+		p.WriteString(p.colName(f.Column))
+		p.WriteString(" IN (")
+		for i, item := range arr {
+			if i > 0 {
+				p.WriteByte(',')
+			}
+			param := p.ParamSymbol
+			if p.PositionalParams {
+				param = fmt.Sprintf("%s%d", p.ParamSymbol, p.argN+p.ParamOffset)
+			}
+			p.WriteString(param)
+			p.argN++
+
+			// Validate and convert each array element
+			err := f.ValidateFn(EQ, *f.FieldMeta, item)
+			must(err, "invalid datatype for field %q in array", f.Name)
+			arg := f.CovertFn(EQ, *f.FieldMeta, item)
+			p.values = append(p.values, arg)
+		}
 		p.WriteByte(')')
 	}
 }
@@ -674,6 +716,15 @@ func errorType(v interface{}, expected string) error {
 
 // validate that the underlined element of given interface is a boolean.
 func validateBool(op Op, f FieldMeta, v interface{}) error {
+	if arr, ok := v.([]interface{}); ok {
+		// Validate each element in the array
+		for i, item := range arr {
+			if _, ok := item.(bool); !ok {
+				return fmt.Errorf("array element %d: expect <bool>, got <%T>", i, item)
+			}
+		}
+		return nil
+	}
 	if _, ok := v.(bool); !ok {
 		return errorType(v, "bool")
 	}
@@ -682,6 +733,15 @@ func validateBool(op Op, f FieldMeta, v interface{}) error {
 
 // validate that the underlined element of given interface is a string.
 func validateString(op Op, f FieldMeta, v interface{}) error {
+	if arr, ok := v.([]interface{}); ok {
+		// Validate each element in the array
+		for i, item := range arr {
+			if _, ok := item.(string); !ok {
+				return fmt.Errorf("array element %d: expect <string>, got <%T>", i, item)
+			}
+		}
+		return nil
+	}
 	if _, ok := v.(string); !ok {
 		return errorType(v, "string")
 	}
@@ -690,6 +750,15 @@ func validateString(op Op, f FieldMeta, v interface{}) error {
 
 // validate that the underlined element of given interface is a float.
 func validateFloat(op Op, f FieldMeta, v interface{}) error {
+	if arr, ok := v.([]interface{}); ok {
+		// Validate each element in the array
+		for i, item := range arr {
+			if _, ok := item.(float64); !ok {
+				return fmt.Errorf("array element %d: expect <float64>, got <%T>", i, item)
+			}
+		}
+		return nil
+	}
 	if _, ok := v.(float64); !ok {
 		return errorType(v, "float64")
 	}
@@ -698,6 +767,19 @@ func validateFloat(op Op, f FieldMeta, v interface{}) error {
 
 // validate that the underlined element of given interface is an int.
 func validateInt(op Op, f FieldMeta, v interface{}) error {
+	if arr, ok := v.([]interface{}); ok {
+		// Validate each element in the array
+		for i, item := range arr {
+			n, ok := item.(float64)
+			if !ok {
+				return fmt.Errorf("array element %d: expect <int>, got <%T>", i, item)
+			}
+			if math.Trunc(n) != n {
+				return fmt.Errorf("array element %d: not an integer", i)
+			}
+		}
+		return nil
+	}
 	n, ok := v.(float64)
 	if !ok {
 		return errorType(v, "int")
@@ -710,6 +792,22 @@ func validateInt(op Op, f FieldMeta, v interface{}) error {
 
 // validate that the underlined element of given interface is an int and greater than 0.
 func validateUInt(op Op, f FieldMeta, v interface{}) error {
+	if arr, ok := v.([]interface{}); ok {
+		// Validate each element in the array
+		for i, item := range arr {
+			n, ok := item.(float64)
+			if !ok {
+				return fmt.Errorf("array element %d: expect <int>, got <%T>", i, item)
+			}
+			if math.Trunc(n) != n {
+				return fmt.Errorf("array element %d: not an integer", i)
+			}
+			if n < 0 {
+				return fmt.Errorf("array element %d: not an unsigned integer", i)
+			}
+		}
+		return nil
+	}
 	if err := validateInt(op, f, v); err != nil {
 		return err
 	}

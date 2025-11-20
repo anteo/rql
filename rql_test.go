@@ -1105,6 +1105,109 @@ func TestParse(t *testing.T) {
 				PositionalParams: true,
 			},
 		},
+		{
+			name: "array IN statement for integers",
+			conf: Config{
+				Model: new(struct {
+					ID    int    `rql:"filter,column=id"`
+					Name  string `rql:"filter,column=name"`
+					Email string `rql:"filter,column=email"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"id": [1, 2, 3]
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "id IN (?,?,?)",
+				FilterArgs: []interface{}{1, 2, 3},
+			},
+		},
+		{
+			name: "array IN statement for strings",
+			conf: Config{
+				Model: new(struct {
+					ID    int    `rql:"filter,column=id"`
+					Name  string `rql:"filter,column=name"`
+					Email string `rql:"filter,column=email"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"name": ["alice", "bob", "charlie"]
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "name IN (?,?,?)",
+				FilterArgs: []interface{}{"alice", "bob", "charlie"},
+			},
+		},
+		{
+			name: "array IN statement with single element",
+			conf: Config{
+				Model: new(struct {
+					ID int `rql:"filter,column=id"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"id": [42]
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "id IN (?)",
+				FilterArgs: []interface{}{42},
+			},
+		},
+		{
+			name: "array IN statement with positional parameters",
+			conf: Config{
+				Model: new(struct {
+					ID int `rql:"filter,column=id"`
+				}),
+				DefaultLimit:     25,
+				ParamSymbol:      "$",
+				PositionalParams: true,
+			},
+			input: []byte(`{
+				"filter": {
+					"id": [1, 2, 3]
+				}
+			}`),
+			wantOut: &Params{
+				Limit:            25,
+				FilterExp:        "id IN ($1,$2,$3)",
+				FilterArgs:       []interface{}{1, 2, 3},
+				ParamSymbol:      "$",
+				PositionalParams: true,
+			},
+		},
+		{
+			name: "empty array generates 1=0",
+			conf: Config{
+				Model: new(struct {
+					ID int `rql:"filter,column=id"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"id": []
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "1=0",
+				FilterArgs: []interface{}{},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
