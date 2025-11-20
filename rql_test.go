@@ -1183,16 +1183,19 @@ func split(e string, pexp string, pos bool) []string {
 			s = append(s, e[:end])
 			e = e[end:]
 		} else {
-			end := strings.IndexByte(e, pexp[0]) + 1
+			// Find the parameter symbol
+			paramStart := strings.IndexByte(e, pexp[0])
+			if paramStart == -1 {
+				// No more parameter symbols found, add remaining string and break
+				s = append(s, e)
+				break
+			}
+
+			end := paramStart + 1
 			if pos {
-				for {
-					if end >= len(e) {
-						break
-					} else if unicode.IsDigit(rune(e[end])) {
-						end++
-					} else {
-						break
-					}
+				// For positional parameters, consume all digits after the symbol
+				for end < len(e) && unicode.IsDigit(rune(e[end])) {
+					end++
 				}
 			}
 			s = append(s, e[:end])
