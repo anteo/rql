@@ -1208,6 +1208,165 @@ func TestParse(t *testing.T) {
 				FilterArgs: []interface{}{},
 			},
 		},
+		{
+			name: "null equality for pointer field",
+			conf: Config{
+				Model: new(struct {
+					Name *string `rql:"filter,column=name"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"name": null
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "name IS NULL",
+				FilterArgs: []interface{}{},
+			},
+		},
+		{
+			name: "null $eq for pointer field",
+			conf: Config{
+				Model: new(struct {
+					Name *string `rql:"filter,column=name"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"name": {"$eq": null}
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "name IS NULL",
+				FilterArgs: []interface{}{},
+			},
+		},
+		{
+			name: "null $neq for pointer field",
+			conf: Config{
+				Model: new(struct {
+					Name *string `rql:"filter,column=name"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"name": {"$neq": null}
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "name IS NOT NULL",
+				FilterArgs: []interface{}{},
+			},
+		},
+		{
+			name: "null equality for sql.NullString",
+			conf: Config{
+				Model: new(struct {
+					Name sql.NullString `rql:"filter,column=name"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"name": null
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "name IS NULL",
+				FilterArgs: []interface{}{},
+			},
+		},
+		{
+			name: "null $eq for sql.NullInt64",
+			conf: Config{
+				Model: new(struct {
+					Age sql.NullInt64 `rql:"filter,column=age"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"age": {"$eq": null}
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "age IS NULL",
+				FilterArgs: []interface{}{},
+			},
+		},
+		{
+			name: "null $neq for sql.NullFloat64",
+			conf: Config{
+				Model: new(struct {
+					Score sql.NullFloat64 `rql:"filter,column=score"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"score": {"$neq": null}
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "score IS NOT NULL",
+				FilterArgs: []interface{}{},
+			},
+		},
+		{
+			name: "null equality for pointer time field",
+			conf: Config{
+				Model: new(struct {
+					CreatedAt *time.Time `rql:"filter,column=created_at"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"created_at": null
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "created_at IS NULL",
+				FilterArgs: []interface{}{},
+			},
+		},
+		{
+			name: "multiple null conditions",
+			conf: Config{
+				Model: new(struct {
+					Name      *string       `rql:"filter,column=name"`
+					Age       sql.NullInt64 `rql:"filter,column=age"`
+					CreatedAt *time.Time    `rql:"filter,column=created_at"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"name": null,
+					"age": {"$neq": null},
+					"$or": [
+						{"created_at": null},
+						{"created_at": {"$eq": null}}
+					]
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "name IS NULL AND age IS NOT NULL AND (created_at IS NULL OR created_at IS NULL)",
+				FilterArgs: []interface{}{},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

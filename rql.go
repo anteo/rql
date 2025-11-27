@@ -134,6 +134,8 @@ type FieldMeta struct {
 	Type reflect.Type
 	// Time layout
 	Layout string
+	// Whether the field can be null
+	IsNullable bool
 }
 
 // A Parser parses various types. The result from the Parse method is a Param object.
@@ -456,7 +458,18 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 		}
 	}
 
+	originalType := sf.Type
 	f.Type = indirect(sf.Type)
+
+	// Check if field is nullable (pointer or sql.Null*)
+	f.IsNullable = originalType.Kind() == reflect.Ptr
+	if !f.IsNullable && f.Type.Kind() == reflect.Struct {
+		switch reflect.Zero(f.Type).Interface().(type) {
+		case sql.NullBool, sql.NullString, sql.NullInt64, sql.NullFloat64:
+			f.IsNullable = true
+		}
+	}
+
 	filterOps := p.Config.GetSupportedOps(f.FieldMeta)
 	if len(filterOps) == 0 {
 		return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
@@ -584,6 +597,12 @@ func (p *parseState) field(f *Field, v interface{}) {
 	terms, ok := v.(map[string]interface{})
 	// default equality check.
 	if !ok {
+		// Check if value is null for nullable fields
+		if v == nil && f.IsNullable {
+			p.WriteString(p.colName(f.Column))
+			p.WriteString(" IS NULL")
+			return
+		}
 		// Check if value is an array/slice for IN (...) statement
 		// Only generate IN (...) for arrays when there are no explicit operators
 		// and the field type is not a slice itself (to avoid conflicts with custom operators)
@@ -605,9 +624,21 @@ func (p *parseState) field(f *Field, v interface{}) {
 		op := Op(opName[1:])
 		expect(f.FilterOps[opName], "can not apply op %q on field %q", opName, f.Name)
 		must(f.ValidateFn(op, *f.FieldMeta, opVal), "invalid datatype or format for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.FieldMeta, op))
-		arg := f.CovertFn(op, *f.FieldMeta, opVal)
-		p.values = append(p.values, arg)
+		if opVal == nil && f.IsNullable {
+			// Handle null comparisons
+			p.WriteString(p.colName(f.Column))
+			if op == EQ {
+				p.WriteString(" IS NULL")
+			} else if op == NEQ {
+				p.WriteString(" IS NOT NULL")
+			} else {
+				expect(false, "null value can only be used with $eq or $neq operators")
+			}
+		} else {
+			p.WriteString(p.fmtOp(f.FieldMeta, op))
+			arg := f.CovertFn(op, *f.FieldMeta, opVal)
+			p.values = append(p.values, arg)
+		}
 		i++
 	}
 	if len(terms) > 1 {
@@ -716,9 +747,15 @@ func errorType(v interface{}, expected string) error {
 
 // validate that the underlined element of given interface is a boolean.
 func validateBool(op Op, f FieldMeta, v interface{}) error {
+	if f.IsNullable && v == nil {
+		return nil
+	}
 	if arr, ok := v.([]interface{}); ok {
 		// Validate each element in the array
 		for i, item := range arr {
+			if f.IsNullable && item == nil {
+				continue
+			}
 			if _, ok := item.(bool); !ok {
 				return fmt.Errorf("array element %d: expect <bool>, got <%T>", i, item)
 			}
@@ -733,9 +770,15 @@ func validateBool(op Op, f FieldMeta, v interface{}) error {
 
 // validate that the underlined element of given interface is a string.
 func validateString(op Op, f FieldMeta, v interface{}) error {
+	if f.IsNullable && v == nil {
+		return nil
+	}
 	if arr, ok := v.([]interface{}); ok {
 		// Validate each element in the array
 		for i, item := range arr {
+			if f.IsNullable && item == nil {
+				continue
+			}
 			if _, ok := item.(string); !ok {
 				return fmt.Errorf("array element %d: expect <string>, got <%T>", i, item)
 			}
@@ -750,9 +793,15 @@ func validateString(op Op, f FieldMeta, v interface{}) error {
 
 // validate that the underlined element of given interface is a float.
 func validateFloat(op Op, f FieldMeta, v interface{}) error {
+	if f.IsNullable && v == nil {
+		return nil
+	}
 	if arr, ok := v.([]interface{}); ok {
 		// Validate each element in the array
 		for i, item := range arr {
+			if f.IsNullable && item == nil {
+				continue
+			}
 			if _, ok := item.(float64); !ok {
 				return fmt.Errorf("array element %d: expect <float64>, got <%T>", i, item)
 			}
@@ -767,9 +816,15 @@ func validateFloat(op Op, f FieldMeta, v interface{}) error {
 
 // validate that the underlined element of given interface is an int.
 func validateInt(op Op, f FieldMeta, v interface{}) error {
+	if f.IsNullable && v == nil {
+		return nil
+	}
 	if arr, ok := v.([]interface{}); ok {
 		// Validate each element in the array
 		for i, item := range arr {
+			if f.IsNullable && item == nil {
+				continue
+			}
 			n, ok := item.(float64)
 			if !ok {
 				return fmt.Errorf("array element %d: expect <int>, got <%T>", i, item)
@@ -792,9 +847,15 @@ func validateInt(op Op, f FieldMeta, v interface{}) error {
 
 // validate that the underlined element of given interface is an int and greater than 0.
 func validateUInt(op Op, f FieldMeta, v interface{}) error {
+	if f.IsNullable && v == nil {
+		return nil
+	}
 	if arr, ok := v.([]interface{}); ok {
 		// Validate each element in the array
 		for i, item := range arr {
+			if f.IsNullable && item == nil {
+				continue
+			}
 			n, ok := item.(float64)
 			if !ok {
 				return fmt.Errorf("array element %d: expect <int>, got <%T>", i, item)
@@ -819,7 +880,10 @@ func validateUInt(op Op, f FieldMeta, v interface{}) error {
 
 // validate that the underlined element of this interface is a "datetime" string.
 func validateTime(layout string) Validator {
-	return func(_ Op, _ FieldMeta, v interface{}) error {
+	return func(_ Op, f FieldMeta, v interface{}) error {
+		if f.IsNullable && v == nil {
+			return nil
+		}
 		s, ok := v.(string)
 		if !ok {
 			return errorType(v, "string")
